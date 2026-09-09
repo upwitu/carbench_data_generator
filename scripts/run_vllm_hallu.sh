@@ -44,9 +44,9 @@ python -m vllm.entrypoints.openai.api_server \
   --model "$MODEL_NAME" \
   --served-model-name hallucination dragonstorm123/qwen3.5-4b-sft-hallucination /mnt/hungpv/outputs_hallucination/sft_merged_model default disambiguation base \
   --port 8300 \
-  --max-model-len 4096 \
+  --max-model-len 32768 \
   --dtype bfloat16 \
-  --gpu-memory-utilization 0.38 \
+  --gpu-memory-utilization 0.45 \
   --enable-auto-tool-choice \
   --tool-call-parser hermes \
   --reasoning-parser qwen3 \

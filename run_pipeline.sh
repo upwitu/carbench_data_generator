@@ -1,57 +1,78 @@
 #!/usr/bin/env bash
 # =====================================================================
-# CAR-Bench Master Pipeline Script
-# Executes environment setup, dataset generation, and SFT training
+# CAR-Bench Winner-Inspired SFT Data Pipeline (1-Command Runner)
+# Automated environment setup, dataset sanitization, and execution
 # =====================================================================
 
-set -e
+set -euo pipefail
 
-echo "=== CAR-Bench End-to-End Pipeline Execution ==="
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# 1. Load or Initialize Environment Variables (.env)
-if [ ! -f .env ]; then
-    echo "[1/4] Creating .env from .env.example..."
-    cp .env.example .env
+MODE="${1:-sanitize}"
+CONCURRENCY="${CONCURRENCY:-30}"
+VARIATIONS="${VARIATIONS:-10}"
+
+echo "=========================================================="
+echo " Starting CAR-Bench Data Generation & Verification Pipeline"
+echo " Target Mode: $MODE | Concurrency: $CONCURRENCY | Variations: $VARIATIONS"
+echo "=========================================================="
+
+# 1. Ensure uv package manager exists
+if ! command -v uv &> /dev/null; then
+    echo "[1/4] Installing 'uv' package manager..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 fi
 
-echo "[1/4] Loading environment variables from .env..."
-set -a
-source .env 2>/dev/null || true
-set +a
+# 2. Synchronize virtual environment
+echo "[2/4] Synchronizing virtual environment dependencies..."
+uv sync
 
-# 2. Synchronize Python Environment using uv
-echo "[2/4] Synchronizing Python environment dependencies using uv..."
-if command -v uv >/dev/null 2>&1; then
-    uv sync
-else
-    echo "[WARN] 'uv' command not found. Using system python..."
+# 3. Environment variables configuration
+if [ ! -f ".env" ]; then
+    echo "[3/4] Initializing .env configuration from example..."
+    cat << 'EOF' > .env
+# Hugging Face Configuration
+HF_TOKEN=your_hf_token_here
+HF_DATASET_REPO=upwitu/carbench_sft_winner_dataset
+
+# LLM Backend Configuration
+OPENAI_API_BASE=https://api.deepseek.com/v1
+OPENAI_API_KEY=your_openai_api_key_here
+CAR_BENCH_MODEL=deepseek-v4-flash
+
+# Generation Limits
+CONCURRENCY_LIMIT=30
+VARIATIONS_PER_TASK=10
+EOF
 fi
 
-# 3. Generate In-Domain SFT Data
-echo "[3/4] Running CAR-Bench SFT Data Generator..."
-if [ -n "$OPENAI_API_KEY" ] && [ "$OPENAI_API_KEY" != "your_openai_or_vllm_key_here" ]; then
-    echo "       Running in API mode (Base: ${OPENAI_API_BASE:-http://localhost:8000/v1}, Model: ${CAR_BENCH_MODEL:-Qwen/Qwen2.5-7B-Instruct})..."
-    uv run data/generate_car_bench_sft_data.py --mode api --api-base "${OPENAI_API_BASE:-http://localhost:8000/v1}" --api-key "$OPENAI_API_KEY" --model "${CAR_BENCH_MODEL:-Qwen/Qwen2.5-7B-Instruct}"
-else
-    echo "       Running in Simulated mode (0% API cost, 100% offline)..."
-    uv run data/generate_car_bench_sft_data.py --mode simulated
-fi
+# 4. Execute dataset sanitization
+echo "[4/4] Sanitizing dataset files in data/new_data/..."
+uv run python scripts/sanitize_dataset.py
 
-# 4. Execute SFT Fine-Tuning across all task categories
-echo "[4/4] Executing SFT Fine-Tuning across Base, Disambiguation, and Hallucination tasks..."
+# 5. Optional Mode Dispatch
+case "$MODE" in
+    all)
+        echo "Executing full dataset synthesis (Multi-role JSON + CodeAct Python)..."
+        uv run python -m sft_generator.main --dataset-type all --concurrency "$CONCURRENCY" --variations "$VARIATIONS"
+        ;;
+    multirole)
+        echo "Executing Multi-role JSON synthesis..."
+        uv run python -m sft_generator.main --dataset-type multi_role_json --concurrency "$CONCURRENCY" --variations "$VARIATIONS"
+        ;;
+    codeact)
+        echo "Executing CodeAct Python synthesis..."
+        uv run python -m sft_generator.main --dataset-type codeact_python --concurrency "$CONCURRENCY" --variations "$VARIATIONS"
+        ;;
+    upload-hf)
+        echo "Publishing dataset to Hugging Face..."
+        uv run python sft_generator/upload_to_hf.py
+        ;;
+    sanitize|*)
+        echo "Pipeline initialized and datasets sanitized successfully."
+        ;;
+esac
 
-echo "---------------------------------------------------------------------"
-echo "Starting Base Tasks SFT Fine-Tuning..."
-bash llm-training/train_base.sh
-
-echo "---------------------------------------------------------------------"
-echo "Starting Disambiguation Tasks SFT Fine-Tuning..."
-bash llm-training/train_disambiguation.sh
-
-echo "---------------------------------------------------------------------"
-echo "Starting Hallucination Tasks SFT Fine-Tuning..."
-bash llm-training/train_hallucination.sh
-
-echo "====================================================================="
-echo "[SUCCESS] CAR-Bench End-to-End Pipeline completed successfully!"
-echo "====================================================================="
+echo "Pipeline execution finished."

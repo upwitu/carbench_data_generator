@@ -18,5 +18,5 @@ tasks_disambiguation_num_tasks = 1
 max_steps = 50
 user_model = "gpt-4o-mini"
 user_provider = "openai"
-policy_evaluator_model = "gpt-4o-mini"
+policy_evaluator_model = "google/gemma-4-31b-it"
 policy_evaluator_provider = "openai"

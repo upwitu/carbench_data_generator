@@ -1,20 +1,22 @@
 #!/bin/bash
 
-# Find Conda python path and locate its site-packages/nvidia directory
-CONDA_PYTHON="/mnt/hungpv/miniconda3/envs/carbench_env/bin/python"
-NVIDIA_DIR="/mnt/hungpv/miniconda3/envs/carbench_env/lib/python3.10/site-packages/nvidia"
+# Find Conda python path
+if [ -n "$CONDA_PREFIX" ] && [ -f "$CONDA_PREFIX/bin/python" ]; then
+    CONDA_PYTHON="$CONDA_PREFIX/bin/python"
+elif [ -f "/home/hungpv/miniconda3/envs/qwen3-sft/bin/python" ]; then
+    CONDA_PYTHON="/home/hungpv/miniconda3/envs/qwen3-sft/bin/python"
+elif [ -f "/mnt/hungpv/miniconda3/envs/carbench_env/bin/python" ]; then
+    CONDA_PYTHON="/mnt/hungpv/miniconda3/envs/carbench_env/bin/python"
+else
+    CONDA_PYTHON="python"
+fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_PREFIX="$SCRIPT_DIR/train_base"
 
-if [ -d "$NVIDIA_DIR" ]; then
-    # Dynamically build LD_LIBRARY_PATH from all subdirectories containing lib
-    LD_PATHS=$(find "$NVIDIA_DIR" -type d -name "lib" | paste -sd ":" -)
-    export LD_LIBRARY_PATH="$LD_PATHS:$LD_LIBRARY_PATH"
-    echo "Configured LD_LIBRARY_PATH with Nvidia packages' libraries."
-fi
-
 # Make sure CUDA_VISIBLE_DEVICES is set to 0 if not provided
-export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
+export PYTHONNOUSERSITE=1
+export PYTHONUNBUFFERED=1
 echo "CUDA_VISIBLE_DEVICES is set to: $CUDA_VISIBLE_DEVICES"
 
 # Auto-detect next available numbered log file

@@ -1,22 +1,20 @@
-# Local smoke scenario for the baseline LiteLLM agent under test.
-# Runs one train task from each CAR-bench task type.
-
+# Local smoke scenario for evaluating Agent Under Test via vLLM
 [evaluator]
 endpoint = "http://127.0.0.1:8081"
-cmd = ".venv/Scripts/python src/evaluator/server.py --host 127.0.0.1 --port 8081"
+cmd = ".venv/bin/python src/evaluator/server.py --host 127.0.0.1 --port 8081"
 
 [agent_under_test]
 endpoint = "http://127.0.0.1:8080"
-cmd = ".venv/Scripts/python src/track_1_agent_under_test/server.py --host 127.0.0.1 --port 8080 --agent-llm gpt-4o-mini --temperature 0.0"
+cmd = "env AGENT_API_BASE=http://127.0.0.1:8000/v1 AGENT_API_KEY=local-dummy-key .venv/bin/python src/track_1_agent_under_test/server.py --host 127.0.0.1 --port 8080 --agent-llm openai/sft_merged_model --temperature 0.0"
 
 [config]
 num_trials = 1
 task_split = "train"
-tasks_base_num_tasks = 2
-tasks_hallucination_num_tasks = 2
-tasks_disambiguation_num_tasks = 2
-max_steps = 50
+tasks_base_num_tasks = 1
+tasks_hallucination_num_tasks = 0
+tasks_disambiguation_num_tasks = 0
+max_steps = 20
 user_model = "gpt-4o-mini"
 user_provider = "openai"
-policy_evaluator_model = "gpt-4o-mini"
+policy_evaluator_model = "google/gemma-4-31b-it"
 policy_evaluator_provider = "openai"

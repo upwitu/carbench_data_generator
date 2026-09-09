@@ -1,166 +1,192 @@
-# CAR-Bench SFT Training & Benchmark Suite
+# CAR-Bench Winner-Inspired SFT Data Generator
 
-This repository provides an end-to-end pipeline for generating in-domain SFT datasets in OpenAI Chat Completions specification, fine-tuning Qwen 3.5 4B using Unsloth (LoRA / BF16), and evaluating model execution across the official CAR-bench suite covering 58 automotive tools and 19 operational policies.
-
----
-
-## 1. Quickstart Workflow
-
-The setup workflow is designed to be completed in three simple commands:
-
-```bash
-# Step 1: Clone the repository
-git clone https://github.com/Logm12/car_bench_openai_dataset.git
-cd car_bench_openai_dataset
-
-# Step 2: Create .env configuration from template
-cp .env.example .env
-# Edit .env to set your HF_TOKEN, OPENAI_API_BASE, OPENAI_API_KEY, etc.
-
-# Step 3: Run the single master pipeline script
-bash run_pipeline.sh
-```
-
-Executing `bash run_pipeline.sh` automatically performs:
-1. Environment variable loading from `.env`.
-2. Python environment synchronization via `uv sync` or Conda.
-3. In-domain SFT dataset generation (`data/generate_car_bench_sft_data.py`).
-4. End-to-end SFT fine-tuning across Base, Disambiguation, and Hallucination tasks (`llm-training/train_*.sh`).
+[English](#english) | [Tiếng Việt](#tiếng-việt)
 
 ---
 
-## 2. CAR-Bench Execution Environment (`carbench_env`)
+## English
 
-Training scripts and benchmark evaluations run inside the `carbench_env` environment stack (Python 3.10, PyTorch 2.11.0, CUDA 12.8/13.0, Unsloth 2026.6.9, vLLM 0.24.0).
+A high-throughput data synthesis engine for autonomous vehicle voice assistants on CAR-Bench (IJCAI 2026). This repository extracts architectural guardrails from the top competition solutions (10CARS, FreudeDrive, and Proxima Ultra) and compiles them into supervised fine-tuning trajectories for compact open-weights language models.
 
-Exact pinned package versions from the production GPU server are stored in [`requirements.txt`](file:///e:/VinAI/VSG/car-bench-ijcai-vsf/requirements.txt) and [`llm-training/requirements.txt`](file:///e:/VinAI/VSG/car-bench-ijcai-vsf/llm-training/requirements.txt).
+### Architectural Foundations
 
-### Replicating `carbench_env` via Conda
+#### 1. 10CARS: Compiled Constitution and Pre-Flight Gate
+Probabilistic language models fail safety constraints under three-trial repeatability ($Pass^3$). The 10CARS architecture establishes that safety policies belong in deterministic code rather than prompt tokens.
+* **Read-Before-Write (`AUT-POL:001`)**: The agent must inspect vehicle state through `get_*` calls before issuing any `set_*` command.
+* **Confirmation Gate (`AUT-POL:002`)**: High-impact operations (opening trunk, sending emails, activating high beams) require explicit driver confirmation before dispatch.
+* **Actuator Boundaries (`AUT-POL:007/008`)**: Actuator requests exceeding operational limits ($16.0 \le T \le 28.0^\circ\text{C}$, fan speed $0 \le v \le 7$) trigger immediate validation failure.
+* **Anti-Churn Gate (`AUT-POL:016`)**: Rejects duplicate consecutive setter calls with identical parameters.
 
-```bash
-# Create Conda environment with Python 3.10
-conda create -n carbench_env python=3.10 -y
-conda activate carbench_env
+#### 2. FreudeDrive: Multi-Role Concurrent Wave
+Sequential tool calling creates cumulative response latency. FreudeDrive splits trajectory planning across specialized concurrent modules:
+* **Four-Step `<think>` Chain**: Every assistant turn executes `[Context Audit]` $\to$ `[Policy Check]` $\to$ `[Tool Selection & Provenance]` $\to$ `[Execution Plan]`.
+* **Parameter Provenance**: Eliminates hallucinated tool parameters. Every parameter value must resolve directly to context history or driver utterances.
 
-# Install exact pinned packages from server carbench_env
-pip install -r requirements.txt
-```
-
-### Replicating `carbench_env` via `uv` (Recommended for Speed)
-
-```bash
-# Create virtual environment with Python 3.10
-uv venv .venv --python 3.10
-source .venv/bin/activate  # On Linux/macOS (.venv\Scripts\activate on Windows)
-
-# Install pinned requirements via uv
-uv pip install -r requirements.txt
-
-# Or synchronize environment automatically
-uv sync
-```
+#### 3. Proxima Ultra: Programmatic CodeAct and Policy-as-Code
+Interactive tool turns introduce cascading errors over long task horizons. Proxima Ultra generates executable Python scripts:
+* **Coroutine Bridge**: Collapses deep multi-tool execution chains into two model calls.
+* **Sentinel Handlers**: Intercepts `"unknown"` sensor signals to trigger safe conversational fallback rather than ungrounded assumptions.
+* **Response Obligations**: Injects mandatory driver notifications whenever environmental changes cross safety thresholds.
 
 ---
 
-## 3. Environment Configuration (`.env`)
+### Repository Structure
 
-The project uses a `.env` file (copied from `.env.example`) to configure tokens, API backends, and repository targets:
-
-```env
-# 1. Hugging Face Authentication Token
-HF_TOKEN=your_huggingface_token_here
-
-# 2. LLM API Backend Configuration (vLLM / OpenAI / LiteLLM)
-OPENAI_API_BASE=http://localhost:8000/v1
-OPENAI_API_KEY=your_openai_or_vllm_key_here
-CAR_BENCH_MODEL=Qwen/Qwen2.5-7B-Instruct
-
-# 3. Hugging Face Target Repositories
-HF_DATASET_REPO=upwitu/carbench_sft_benchmark_data
-HF_MODEL_LORA_REPO=upwitu/qwen3.5-4b-sft-carbench-lora
-HF_MODEL_MERGED_REPO=upwitu/qwen3.5-4b-sft-carbench
+```
+carbench_data_generator/
+├── data/
+│   └── new_data/
+│       ├── carbench_sft_multirole_json.jsonl   # 1,324 multi-role JSON records with 4-step CoT
+│       └── carbench_sft_codeact_python.jsonl   # 1,443 programmatic CodeAct Python records
+├── sft_generator/
+│   ├── config.py                               # Concurrency limits, timeouts, and paths
+│   ├── schemas.py                              # Official 57 CAR-bench tool definitions
+│   ├── generator.py                            # Async worker orchestrator and file writers
+│   ├── async_engine.py                         # Streaming HTTP client with rate limiting
+│   ├── main.py                                 # Command-line entrypoint
+│   ├── upload_to_hf.py                         # Hugging Face dataset publishing utility
+│   ├── prompts/
+│   │   ├── multi_role_json_prompt.py           # Multi-role CoT synthesis prompt templates
+│   │   └── codeact_python_prompt.py            # CodeAct Policy-as-Code synthesis templates
+│   └── validators/
+│       ├── pre_flight_gate.py                  # Deterministic L1-L3 rule validation
+│       └── codeact_validator.py                # Python AST and sentinel object validation
+├── scripts/
+│   ├── sanitize_dataset.py                     # Schema normalization and ID generator
+│   ├── upload_all_hf.py                        # Hugging Face model uploader
+│   ├── run_vllm_all.sh                         # vLLM inference server launcher
+│   ├── run_bench_base.sh                       # Base benchmark runner
+│   ├── run_bench_disambig.sh                   # Disambiguation benchmark runner
+│   └── run_bench_hallu.sh                      # Hallucination benchmark runner
+├── run_pipeline.sh                             # Single-command setup and generation runner
+├── pyproject.toml                              # Package metadata and dependencies
+└── README.md                                   # Project documentation
 ```
 
 ---
 
-## 4. Automatic Dataset Ingestion from Hugging Face
+### Quickstart (Single-Command Execution)
 
-All SFT training datasets are packaged and published on the Hugging Face Hub:
-- **Dataset Repository**: [upwitu/carbench_sft_benchmark_data](https://huggingface.co/datasets/upwitu/carbench_sft_benchmark_data)
+Run the full setup, environment synchronization, and dataset sanitization:
 
-### Dataset Catalog
-- `data/car_base_sft.jsonl`: 3,500 SFT samples for Base Tasks & Safety Confirmation.
-- `data/car_disambiguation_sft.jsonl`: 2,520 SFT samples for Disambiguation Tasks.
-- `data/car_hallucination_sft.jsonl`: 2,548 SFT samples for Hallucination Tasks.
-- `data/car_sft_dataset_openai.jsonl`: 8,568 combined master dataset samples across all categories.
+```bash
+chmod +x run_pipeline.sh
+./run_pipeline.sh
+```
 
-*Note*: Training scripts (`train_base.py`, `train_disambiguation.py`, `train_hallucination.py`) include automatic fallback handlers: if local data files are absent, scripts automatically download the target dataset file from `upwitu/carbench_sft_benchmark_data`.
+To run targeted synthesis pipelines:
+
+```bash
+# Generate Multi-Role JSON dataset
+./run_pipeline.sh multirole
+
+# Generate Programmatic CodeAct Python dataset
+./run_pipeline.sh codeact
+
+# Run full pipeline with custom concurrency
+CONCURRENCY=40 VARIATIONS=10 ./run_pipeline.sh all
+```
+
+Environment variables configure via `.env`:
+
+```ini
+HF_TOKEN=hf_your_token_here
+HF_DATASET_REPO=upwitu/carbench_sft_winner_dataset
+OPENAI_API_BASE=https://api.deepseek.com/v1
+OPENAI_API_KEY=your_api_key_here
+CAR_BENCH_MODEL=deepseek-v4-flash
+CONCURRENCY_LIMIT=30
+VARIATIONS_PER_TASK=10
+```
 
 ---
 
-## 5. Documentation Catalog
+### Model Artifacts and Benchmark Evaluation
 
-- **Training Code Logic**: [`docs/TRAINING_LOGIC_DOCUMENTATION.md`](file:///e:/VinAI/VSG/car-bench-ijcai-vsf/docs/TRAINING_LOGIC_DOCUMENTATION.md) (Detailed breakdown of Unsloth initialization, CUDA pre-loading, loss masking via `train_on_responses_only`, and LoRA hyperparameter configuration).
-- **Data Generator Architecture**: [`data/generation_code_documentation.md`](file:///e:/VinAI/VSG/car-bench-ijcai-vsf/data/generation_code_documentation.md) (Architecture of `--mode simulated` vs `--mode api`, Mermaid flowcharts, and 58-tool registry specs).
+Fine-tuned model weights are available on Hugging Face:
+* **LoRA Adapter**: [`upwitu/qwen3-4b-sft-all-lora`](https://huggingface.co/upwitu/qwen3-4b-sft-all-lora)
+* **Merged BF16 Weights**: [`upwitu/qwen3-4b-sft-all`](https://huggingface.co/upwitu/qwen3-4b-sft-all)
 
----
-
-## 6. Codebase Architecture
-
-### A. Data Generation Engine (`data/`)
-- `data/generate_car_bench_sft_data.py`: Source code generating 8,568 OpenAI-formatted SFT samples. Supports dual execution backends: `--mode simulated` (0-cost offline rule-based simulation) and `--mode api` (online vLLM server or OpenAI API endpoint).
-- `data/generation_code_documentation.md`: Detailed technical specification of the generator architecture, Mermaid execution flowcharts, and error resolution mapping.
-
-### B. SFT Fine-Tuning Module (`llm-training/`)
-- `llm-training/train_base.py` & `llm-training/train_base.sh`: SFT training pipeline for Base Tasks and Safety Confirmations.
-- `llm-training/train_disambiguation.py` & `llm-training/train_disambiguation.sh`: SFT training pipeline for Disambiguation Tasks (prioritizing internal preference lookups before user clarification).
-- `llm-training/train_hallucination.py` & `llm-training/train_hallucination.sh`: SFT training pipeline for Hallucination Tasks (1-sentence polite refusals on pruned capabilities and multi-turn feature switching).
-- `llm-training/requirements.txt`: Pinned package requirements from server `carbench_env`.
-- `llm-training/TRAINING_LOGIC_DOCUMENTATION.md`: Technical documentation for training pipeline logic.
-
-### C. Benchmark Evaluation Suite (`scenarios/`, `src/`, `scripts/`)
-- `scenarios/track_1_agent_under_test/`: TOML evaluation scenario configurations (`benchmark_sft_hallucination.toml`, `local_base_test.toml`, `local_disambiguation_test.toml`).
-- `src/track_1_agent_under_test/car_bench_agent.py`: Agent execution module interfacing with CAR-bench environment tool APIs.
-- `src/evaluator/server.py`: Benchmark evaluation server validating tool call execution correctness and policy adherence.
-- `scripts/run_vllm_*.sh` & `scripts/run_bench_*.sh`: Shell wrappers to launch vLLM inference servers and trigger automated benchmark evaluation runs.
-
----
-
-## 7. Execution Commands Summary
-
-### Master Pipeline (All-in-One)
+#### Running the vLLM Evaluation Server
 ```bash
-bash run_pipeline.sh
+bash scripts/run_vllm_all.sh
 ```
 
-### Individual Step Execution
-
-#### 1. Generate Training Data
+#### Running Benchmark Suites
 ```bash
-# Offline simulation mode (0% API cost)
-uv run data/generate_car_bench_sft_data.py --mode simulated
-
-# Online API mode via local vLLM server
-uv run data/generate_car_bench_sft_data.py --mode api --api-base http://localhost:8000/v1 --model Qwen/Qwen2.5-7B-Instruct
-```
-
-#### 2. Execute SFT Training
-```bash
-# Train Base tasks
-bash llm-training/train_base.sh
-
-# Train Disambiguation tasks
-bash llm-training/train_disambiguation.sh
-
-# Train Hallucination tasks
-bash llm-training/train_hallucination.sh
-```
-
-#### 3. Run Benchmark Evaluation
-```bash
-# Step 1: Launch vLLM inference server
-bash scripts/run_vllm_disambig.sh
-
-# Step 2: Trigger benchmark evaluator
+export OPENAI_API_KEY="your-evaluator-openai-key"
+bash scripts/run_bench_base.sh
 bash scripts/run_bench_disambig.sh
+bash scripts/run_bench_hallu.sh
+```
+
+---
+
+## Tiếng Việt
+
+Hệ thống sinh dữ liệu huấn luyện SFT hiệu năng cao cho trợ lý giọng nói trên xe hơi theo chuẩn đánh giá CAR-Bench (IJCAI 2026). Kho lưu trữ chắt lọc các giải pháp kỹ thuật từ ba đội tuyển vô địch (10CARS, FreudeDrive, và Proxima Ultra), đóng gói thành tập dữ liệu mẫu chuẩn hóa cho mô hình ngôn ngữ mở kích thước nhỏ.
+
+### Nền Tảng Kiến Trúc
+
+#### 1. 10CARS: Cổng Kiểm Soát Xuất Xưởng (Pre-Flight Gate)
+Mô hình ngôn ngữ sinh xác suất thường vi phạm quy tắc an toàn khi đánh giá lặp 3 lần độc lập ($Pass^3$). 10CARS khẳng định chính sách an toàn phải nằm trong mã nguồn thực thi:
+* **Đọc Trước Khi Ghi (`AUT-POL:001`)**: Bắt buộc đọc trạng thái xe qua các lệnh `get_*` trước khi thực thi lệnh thay đổi `set_*`.
+* **Cổng Xác Nhận (`AUT-POL:002`)**: Thao tác rủi ro cao (mở cốp xe, gửi thư điện tử, bật đèn pha chiếu xa) bắt buộc xin phép tài xế trước khi chạy.
+* **Giới Hạn Thông Số (`AUT-POL:007/008`)**: Kiểm tra trực tiếp giới hạn vận hành ($16.0 \le T \le 28.0^\circ\text{C}$, quạt gió $0 \le v \le 7$).
+* **Chống Ghi Đè Lặp Lại (`AUT-POL:016`)**: Chặn các lệnh ghi đè liên tiếp có cùng thông số.
+
+#### 2. FreudeDrive: Phân Vai Đồng Thời (Multi-Role Concurrency)
+Thực thi công cụ tuần tự làm tăng thời gian chờ của tài xế. FreudeDrive phân tách quy trình xử lý thành các luồng song song:
+* **Chuỗi `<think>` 4 bước**: Mỗi phản hồi của trợ lý tuân thủ `[Context Audit]` $\to$ `[Policy Check]` $\to$ `[Tool Selection & Provenance]` $\to$ `[Execution Plan]`.
+* **Nguồn Gốc Tham Số**: Loại bỏ việc tự bịa tham số công cụ. Mọi giá trị tham số phải trích xuất trực tiếp từ lịch sử hoặc lời nói của tài xế.
+
+#### 3. Proxima Ultra: Lập Trình Thực Thi (CodeAct) và Chính Sách Trong Mã
+Thay thế vòng lặp gọi công cụ tương tác bằng kịch bản Python hoàn chỉnh:
+* **Cầu Nối Coroutine**: Gom chuỗi gọi công cụ phức tạp từ 7 lượt gọi mô hình xuống còn 2 lượt.
+* **Bộ Bắt Sentinel**: Chặn tín hiệu cảm biến trả về `"unknown"` để chuyển sang hỏi lại tài xế an toàn thay vì tự suy đoán.
+* **Nghĩa Vụ Cảnh Báo**: Tự động chèn cảnh báo âm thanh khi các chỉ số vượt ngưỡng tiện nghi.
+
+---
+
+### Hướng Dẫn Vận Hành Nhanh (1 Lệnh Duy Nhất)
+
+Cài đặt môi trường và chuẩn hóa dữ liệu chỉ với một câu lệnh:
+
+```bash
+chmod +x run_pipeline.sh
+./run_pipeline.sh
+```
+
+Chạy từng chế độ sinh dữ liệu riêng biệt:
+
+```bash
+# Sinh tập dữ liệu Multi-Role JSON
+./run_pipeline.sh multirole
+
+# Sinh tập dữ liệu CodeAct Python
+./run_pipeline.sh codeact
+
+# Chạy toàn bộ với số luồng tùy chọn
+CONCURRENCY=40 VARIATIONS=10 ./run_pipeline.sh all
+```
+
+---
+
+### Mô Hình Huấn Luyện và Đánh Giá Benchmark
+
+Các mô hình tinh chỉnh từ tập dữ liệu được lưu trữ trên Hugging Face:
+* **LoRA Adapter**: [`upwitu/qwen3-4b-sft-all-lora`](https://huggingface.co/upwitu/qwen3-4b-sft-all-lora)
+* **Trọng Số Hợp Nhất BF16**: [`upwitu/qwen3-4b-sft-all`](https://huggingface.co/upwitu/qwen3-4b-sft-all)
+
+#### Chạy Máy Chủ vLLM
+```bash
+bash scripts/run_vllm_all.sh
+```
+
+#### Chạy Bộ Kiểm Thử CAR-Bench
+```bash
+export OPENAI_API_KEY="your-evaluator-openai-key"
+bash scripts/run_bench_base.sh
+bash scripts/run_bench_disambig.sh
+bash scripts/run_bench_hallu.sh
 ```

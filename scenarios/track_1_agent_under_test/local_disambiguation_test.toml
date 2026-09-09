@@ -1,5 +1,5 @@
 # Local test-set scenario for running ONLY disambiguation tasks
-# Model: dragonstorm123/qwen3.5-4b-sft-disambiguation served via vLLM (port 8300, name: disambiguation)
+# Model: dragonstorm123/qwen3.5-4b-sft-disambiguation served via vLLM (port 8000, name: disambiguation)
 # Disables base and hallucination tasks for disambiguation task evaluation.
 
 [evaluator]
@@ -8,7 +8,7 @@ cmd = ".venv/bin/python src/evaluator/server.py --host 127.0.0.1 --port 8081"
 
 [agent_under_test]
 endpoint = "http://127.0.0.1:8080"
-cmd = "env AGENT_API_BASE=http://127.0.0.1:8300/v1 AGENT_API_KEY=local-dummy-key .venv/bin/python src/track_1_agent_under_test/server.py --host 127.0.0.1 --port 8080 --agent-llm openai/disambiguation --temperature 0.0"
+cmd = "env AGENT_API_BASE=http://127.0.0.1:8000/v1 AGENT_API_KEY=local-dummy-key .venv/bin/python src/track_1_agent_under_test/server.py --host 127.0.0.1 --port 8080 --agent-llm openai/disambiguation --temperature 0.0"
 
 [config]
 num_trials = 3
@@ -20,5 +20,5 @@ max_steps = 50
 user_model = "openai/gpt-4o-mini"
 user_provider = "openai"
 user_thinking = false
-policy_evaluator_model = "openai/gpt-4o-mini"
+policy_evaluator_model = "openai/deepseek-ai/deepseek-v4-pro-0813"
 policy_evaluator_provider = "openai"

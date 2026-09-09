@@ -45,9 +45,9 @@ python -m vllm.entrypoints.openai.api_server \
   --model "$MODEL_NAME" \
   --served-model-name base dragonstorm123/qwen3.5-4b-sft-base upwitu/qwen3.5-4b-sft-carbench /mnt/hungpv/outputs_base/sft_merged_model default disambiguation hallucination \
   --port 8300 \
-  --max-model-len 4096 \
+  --max-model-len 32768 \
   --dtype bfloat16 \
-  --gpu-memory-utilization 0.38 \
+  --gpu-memory-utilization 0.45 \
   --enable-auto-tool-choice \
   --tool-call-parser hermes \
   --reasoning-parser qwen3 \

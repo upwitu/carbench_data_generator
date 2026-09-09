@@ -67,6 +67,11 @@ if not hasattr(torch.utils, "_pytree"):
     import torch.utils._pytree
 if not hasattr(torch.utils._pytree, "register_constant"):
     torch.utils._pytree.register_constant = lambda cls: cls
+
+# Prevent incompatible torchao quantizers from breaking transformers/unsloth
+sys.modules['torchao'] = None
+sys.modules['torchao.quantization'] = None
+sys.modules['torchao.prototype'] = None
 print("Compatibility patches successfully applied!")
 
 # Unsloth must be imported before any other HuggingFace/transformers libraries
@@ -113,11 +118,14 @@ print(f"Using device: {device}")
 # =====================================================================
 # 2. LOAD LIBRARIES & MODEL
 # =====================================================================
-import matplotlib
-matplotlib.use("Agg")  # Non-interactive backend for server script
-import matplotlib.pyplot as plt
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+except Exception:
+    plt = None
 
-MODEL_NAME = "Qwen/Qwen3.5-4B"
+MODEL_NAME = "Qwen/Qwen3-4B-Instruct-2507"
 PERSISTENT_DIR = "./outputs_hallucination"
 ADAPTER_PATH = os.path.join(PERSISTENT_DIR, "sft_lora_adapter")
 MERGED_PATH = os.path.join(PERSISTENT_DIR, "sft_merged_model")
@@ -509,7 +517,7 @@ for local_file_path in downloaded_file_paths:
                     # interactive_agent_hallucination.jsonl: both fields present, augmented is the target.
                     # search_hallucination.jsonl: contains web-search tool responses (very long),
                     #   tool content may include "... [truncated XXXX chars]" markers.
-                    raw_msgs = sample.get("messages") or sample.get("augmented_messages") or sample.get("raw_messages")
+                    raw_msgs = sample.get("conversations") or sample.get("messages") or sample.get("augmented_messages") or sample.get("raw_messages")
                     messages = _parse_messages(raw_msgs)
                     if messages:
                         # Clean think token leaks from assistant content
@@ -891,36 +899,37 @@ if not args_cli.smoke_test:
     # 6. VISUALIZE AND SAVE PLOT
     # =====================================================================
     print("Generating loss curve plot...")
-    if hasattr(trainer, "state") and trainer.state.log_history:
-        history = trainer.state.log_history
-        train_steps = []
-        train_losses = []
-        eval_steps = []
-        eval_losses = []
-        
-        for log in history:
-            step = log.get("step")
-            if "loss" in log:
-                train_steps.append(step)
-                train_losses.append(log["loss"])
-            if "eval_loss" in log:
-                eval_steps.append(step)
-                eval_losses.append(log["eval_loss"])
-                
-        plt.figure(figsize=(10, 5))
-        if train_losses:
-            plt.plot(train_steps, train_losses, label="Train Loss", color="red", marker="o")
-        if eval_losses:
-            plt.plot(eval_steps, eval_losses, label="Validation Loss", color="blue", marker="s")
-        plt.xlabel("Step")
-        plt.ylabel("Loss")
-        plt.title("SFT Loss Curve comparison: Train vs Validation")
-        plt.legend()
-        plt.grid(True)
-        
-        plot_path = os.path.join(PERSISTENT_DIR, "loss_plot.png")
-        plt.savefig(plot_path)
-        print(f"Loss plot saved to: {plot_path}")
+    try:
+        if plt is not None and hasattr(trainer, "state") and trainer.state.log_history:
+            history = trainer.state.log_history
+            train_steps, train_losses = [], []
+            eval_steps, eval_losses = [], []
+            
+            for log in history:
+                step = log.get("step")
+                if "loss" in log:
+                    train_steps.append(step)
+                    train_losses.append(log["loss"])
+                if "eval_loss" in log:
+                    eval_steps.append(step)
+                    eval_losses.append(log["eval_loss"])
+                    
+            plt.figure(figsize=(10, 5))
+            if train_losses:
+                plt.plot(train_steps, train_losses, label="Train Loss", color="red", marker="o")
+            if eval_losses:
+                plt.plot(eval_steps, eval_losses, label="Validation Loss", color="blue", marker="s")
+            plt.xlabel("Step")
+            plt.ylabel("Loss")
+            plt.title("SFT Loss Curve comparison: Train vs Validation")
+            plt.legend()
+            plt.grid(True)
+            
+            plot_path = os.path.join(PERSISTENT_DIR, "loss_plot.png")
+            plt.savefig(plot_path)
+            print(f"Loss plot saved to: {plot_path}")
+    except Exception as e:
+        print(f"Note: Could not generate loss plot ({e}), proceeding to model saving.")
 
     # =====================================================================
     # 7. SAVE ADAPTERS AND UPLOAD TO HUGGINGFACE HUB
