@@ -8,6 +8,110 @@
 
 A high-throughput data synthesis engine for autonomous vehicle voice assistants on CAR-Bench (IJCAI 2026). This repository extracts architectural guardrails from the top competition solutions (10CARS, FreudeDrive, and Proxima Ultra) and compiles them into supervised fine-tuning trajectories for compact open-weights language models.
 
+### System Architecture & Data Pipeline
+
+```mermaid
+flowchart TD
+    subgraph SeedTasks["1. Raw Seed Scenarios"]
+        S1["Base Scenarios (100)"]
+        S2["Disambiguation Scenarios (60)"]
+        S3["Hallucination Scenarios (100)"]
+    end
+
+    subgraph GeneratorEngine["2. Winner-Based Dual Synthesis Engine"]
+        direction TB
+        LLM["Async LLM Engine (Sliding-Window Rate Limiter)"]
+        P1["Multi-Role JSON Synthesizer<br/>(10CARS & FreudeDrive)"]
+        P2["Programmatic CodeAct Synthesizer<br/>(Proxima Ultra)"]
+        LLM --> P1
+        LLM --> P2
+    end
+
+    subgraph ValidationGates["3. Deterministic Validation Gates"]
+        direction TB
+        G1["L3 Pre-Flight Gate (10CARS)<br/>• Read-Before-Write (AUT-POL:001)<br/>• Confirmation Gate (AUT-POL:002)<br/>• Boundary Limits (AUT-POL:007/008)<br/>• Anti-Overwrite Idempotence (AUT-POL:016)"]
+        G2["AST & Sentinel Gate (Proxima Ultra)<br/>• Block Unauthorized Modules<br/>• Unknown-Value Sentinel Objects<br/>• Response Obligations Enforcement"]
+    end
+
+    subgraph OutputDatasets["4. Production SFT Datasets"]
+        D1["carbench_sft_multirole_json.jsonl<br/>(1,324 samples | 4-step CoT)"]
+        D2["carbench_sft_codeact_python.jsonl<br/>(1,443 samples | Executable Python)"]
+    end
+
+    subgraph Downstream["5. Model Training & CAR-Bench Evaluation"]
+        M1["Qwen3-4B LoRA Fine-Tuning<br/>(r=16, alpha=32, loss=0.7222)"]
+        M2["vLLM Inference Server<br/>(Hermes Tool Call Parser)"]
+        M3["CAR-Bench Evaluator<br/>(Pass^1 and Pass^3 Benchmark)"]
+        M1 --> M2 --> M3
+    end
+
+    SeedTasks --> GeneratorEngine
+    P1 --> G1
+    P2 --> G2
+    G1 -->|Pass| D1
+    G2 -->|Pass| D2
+    G1 -.->|Violations / Retry| P1
+    G2 -.->|Syntax Error / Retry| P2
+    D1 --> M1
+    D2 --> M1
+
+    classDef seed fill:#e1f5fe,stroke:#0288d1,stroke-width:1.5px;
+    classDef engine fill:#ede7f6,stroke:#512da8,stroke-width:1.5px;
+    classDef gate fill:#fff3e0,stroke:#f57c00,stroke-width:1.5px;
+    classDef dataset fill:#e8f5e9,stroke:#388e3c,stroke-width:1.5px;
+    classDef model fill:#fce4ec,stroke:#c2185b,stroke-width:1.5px;
+
+    class S1,S2,S3 seed;
+    class LLM,P1,P2 engine;
+    class G1,G2 gate;
+    class D1,D2 dataset;
+    class M1,M2,M3 model;
+```
+
+---
+
+### Execution Flow & Safety Invariants
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Driver as Driver / Evaluator
+    participant Agent as Autonomous Vehicle Agent
+    participant Gate as L3 Pre-Flight Gate (10CARS)
+    participant Car as In-Cabin Vehicle System
+
+    Driver->>Agent: "It's cold in here. Set temperature to 24°C and open trunk."
+    Note over Agent: Step 1: [Context Audit] Assess vehicle state and intent<br/>Step 2: [Policy Check] AUT-POL:001 (Read First), AUT-POL:002 (Confirmation Gate)
+    
+    rect rgb(240, 248, 255)
+        Note over Agent,Gate: Phase 1: Read-Before-Write (AUT-POL:001)
+        Agent->>Gate: tool_calls: get_climate_settings()
+        Gate-->>Agent: Approved (Read operation)
+        Agent->>Car: get_climate_settings()
+        Car-->>Agent: {"temperature": 18.0, "fan_speed": 1}
+    end
+
+    rect rgb(255, 243, 224)
+        Note over Agent,Gate: Phase 2: Confirmation Gate (AUT-POL:002)
+        Note over Agent: Step 3: [Tool Selection] set_climate_temperature(24.0)<br/>Trunk requires explicit confirmation before execution
+        Agent->>Gate: tool_calls: open_close_trunk_door(open=true)
+        Gate-->>Agent: BLOCKED (AUT-POL:002: Missing confirmation)
+        Agent-->>Driver: "I adjusted AC to 24°C. Are you sure you want to open the trunk?"
+        Driver->>Agent: "Yes, open the trunk."
+    end
+
+    rect rgb(232, 245, 233)
+        Note over Agent,Car: Phase 3: Actuation after Confirmation
+        Agent->>Gate: tool_calls: open_close_trunk_door(open=true)
+        Gate-->>Agent: Approved (Confirmation satisfied)
+        Agent->>Car: open_close_trunk_door(open=true)
+        Car-->>Agent: {"status": "success", "trunk_door_open": true}
+        Agent-->>Driver: "The trunk is now open."
+    end
+```
+
+---
+
 ### Architectural Foundations
 
 #### 1. 10CARS: Compiled Constitution and Pre-Flight Gate
@@ -125,6 +229,110 @@ bash scripts/run_bench_hallu.sh
 ## Tiếng Việt
 
 Hệ thống sinh dữ liệu huấn luyện SFT hiệu năng cao cho trợ lý giọng nói trên xe hơi theo chuẩn đánh giá CAR-Bench (IJCAI 2026). Kho lưu trữ chắt lọc các giải pháp kỹ thuật từ ba đội tuyển vô địch (10CARS, FreudeDrive, và Proxima Ultra), đóng gói thành tập dữ liệu mẫu chuẩn hóa cho mô hình ngôn ngữ mở kích thước nhỏ.
+
+### Kiến Trúc Hệ Thống & Pipeline Sinh Dữ Liệu
+
+```mermaid
+flowchart TD
+    subgraph NhiemVuGoc["1. Tập Kịch Bản Mẫu Ban Đầu (Raw Seed Tasks)"]
+        S1["Tác Vụ Tiêu Chuẩn - Base (100)"]
+        S2["Tác Vụ Mập Mờ - Disambiguation (60)"]
+        S3["Tác Vụ Ảo Giác - Hallucination (100)"]
+    end
+
+    subgraph DongCoSinh["2. Động Cơ Sinh Dữ Liệu Kép (Dual Synthesis Engine)"]
+        direction TB
+        LLM["Async LLM Engine (Cơ chế Điều tiết Tốc độ RPM)"]
+        P1["Mô Thức Multi-Role JSON<br/>(10CARS & FreudeDrive)"]
+        P2["Mô Thức Programmatic CodeAct Python<br/>(Proxima Ultra)"]
+        LLM --> P1
+        LLM --> P2
+    end
+
+    subgraph TramKiemSoat["3. Cổng Kiểm Soát Đơn Định (Deterministic Gates)"]
+        direction TB
+        G1["Cổng Tiền Bay L3 (10CARS)<br/>• Đọc Trước Khi Ghi (AUT-POL:001)<br/>• Cổng Xin Phép Xác Nhận (AUT-POL:002)<br/>• Giới Hạn Tham Số Nhiệt Độ/Quạt (AUT-POL:007/008)<br/>• Chống Ghi Đè Sửa Sai Lặp Lại (AUT-POL:016)"]
+        G2["Bộ Lọc AST & Sentinel (Proxima Ultra)<br/>• Chặn Thư Viện Nguy Hiểm (os, sys)<br/>• Bắt Trọn Giá Trị Cảm Biến 'unknown'<br/>• Ép Nghĩa Vụ Cảnh Báo An Toàn"]
+    end
+
+    subgraph DuLieuDauRa["4. Tập Dữ Liệu Huấn Luyện Chuẩn Hóa"]
+        D1["carbench_sft_multirole_json.jsonl<br/>(1,324 mẫu | CoT 4 bước)"]
+        D2["carbench_sft_codeact_python.jsonl<br/>(1,443 mẫu | Script Python)"]
+    end
+
+    subgraph UngDung["5. Huấn Luyện Mô Hình & Đánh Giá CAR-Bench"]
+        M1["Huấn Luyện LoRA Qwen3-4B<br/>(r=16, alpha=32, loss=0.7222)"]
+        M2["Máy Chủ Suy Luận vLLM<br/>(Bộ Phân Tích Hermes Tool Call)"]
+        M3["Hệ Thống Đánh Giá CAR-Bench<br/>(Thước Đo Pass^1 và Pass^3)"]
+        M1 --> M2 --> M3
+    end
+
+    NhiemVuGoc --> DongCoSinh
+    P1 --> G1
+    P2 --> G2
+    G1 -->|Hợp Lệ| D1
+    G2 -->|Hợp Lệ| D2
+    G1 -.->|Vi Phạm / Sinh Lại| P1
+    G2 -.->|Lỗi Cú Pháp / Sinh Lại| P2
+    D1 --> M1
+    D2 --> M1
+
+    classDef seed fill:#e1f5fe,stroke:#0288d1,stroke-width:1.5px;
+    classDef engine fill:#ede7f6,stroke:#512da8,stroke-width:1.5px;
+    classDef gate fill:#fff3e0,stroke:#f57c00,stroke-width:1.5px;
+    classDef dataset fill:#e8f5e9,stroke:#388e3c,stroke-width:1.5px;
+    classDef model fill:#fce4ec,stroke:#c2185b,stroke-width:1.5px;
+
+    class S1,S2,S3 seed;
+    class LLM,P1,P2 engine;
+    class G1,G2 gate;
+    class D1,D2 dataset;
+    class M1,M2,M3 model;
+```
+
+---
+
+### Luồng Xử Lý Lượt Thoại & Kiểm Định Quy Tắc An Toàn L3
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor TaiXe as Tài Xế / Giám Sát Viên
+    participant TroLy as Trợ Lý Giọng Nói Xe Hơi
+    participant TramKiem as Cổng Tiền Bay L3 (10CARS)
+    participant Xe as Hệ Thống Chấp Hành Trên Xe
+
+    TaiXe->>TroLy: "Xe lạnh quá. Hãy chỉnh nhiệt độ 24°C và mở cốp sau."
+    Note over TroLy: Bước 1: [Context Audit] Đánh giá ngữ cảnh và ý định<br/>Bước 2: [Policy Check] AUT-POL:001 (Đọc trước), AUT-POL:002 (Xin xác nhận)
+    
+    rect rgb(240, 248, 255)
+        Note over TroLy,TramKiem: Pha 1: Đọc Trước Khi Ghi (AUT-POL:001)
+        TroLy->>TramKiem: tool_calls: get_climate_settings()
+        TramKiem-->>TroLy: Phê duyệt (Lệnh đọc trạng thái)
+        TroLy->>Xe: get_climate_settings()
+        Xe-->>TroLy: {"temperature": 18.0, "fan_speed": 1}
+    end
+
+    rect rgb(255, 243, 224)
+        Note over TroLy,TramKiem: Pha 2: Cổng Xin Phép Xác Nhận (AUT-POL:002)
+        Note over TroLy: Bước 3: [Tool Selection] set_climate_temperature(24.0)<br/>Mở cốp là hành vi rủi ro cao, bắt buộc phải hỏi tài xế
+        TroLy->>TramKiem: tool_calls: open_close_trunk_door(open=true)
+        TramKiem-->>TroLy: CHẶN ĐỨNG (AUT-POL:002: Chưa có xác nhận)
+        TroLy-->>TaiXe: "Tôi đã chỉnh điều hòa lên 24°C. Bạn có chắc chắn muốn mở cốp xe không?"
+        TaiXe->>TroLy: "Đồng ý, mở cốp xe đi."
+    end
+
+    rect rgb(232, 245, 233)
+        Note over TroLy,Xe: Pha 3: Thực Thi Sau Khi Đã Xác Nhận
+        TroLy->>TramKiem: tool_calls: open_close_trunk_door(open=true)
+        TramKiem-->>TroLy: Phê duyệt (Đã thỏa mãn xác nhận)
+        TroLy->>Xe: open_close_trunk_door(open=true)
+        Xe-->>TroLy: {"status": "success", "trunk_door_open": true}
+        TroLy-->>TaiXe: "Cốp sau xe đã được mở."
+    end
+```
+
+---
 
 ### Nền Tảng Kiến Trúc
 
