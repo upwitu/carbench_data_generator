@@ -171,14 +171,32 @@ carbench_data_generator/
 
 ### Quickstart (Single-Command Execution)
 
-Run the full setup, environment synchronization, and dataset sanitization:
+Run environment synchronization and dataset sanitization:
 
 ```bash
 chmod +x run_pipeline.sh
 ./run_pipeline.sh
 ```
 
-To run targeted synthesis pipelines:
+#### Option A: Running with Local Self-Hosted Model (No External API Key)
+
+If you have a local model or server instance (such as vLLM, Ollama, or local checkpoints):
+
+1. Launch your local vLLM server:
+```bash
+# Serve fine-tuned weights locally on port 8000
+./run_pipeline.sh serve-vllm upwitu/qwen3-4b-sft-all 8000
+```
+
+2. Run generation against the local endpoint:
+```bash
+# Synthesize datasets against local endpoint without rate limits
+./run_pipeline.sh local upwitu/qwen3-4b-sft-all 8000
+```
+
+#### Option B: Running with Cloud API Providers
+
+To run targeted synthesis pipelines against OpenAI-compatible APIs:
 
 ```bash
 # Generate Multi-Role JSON dataset
@@ -191,14 +209,24 @@ To run targeted synthesis pipelines:
 CONCURRENCY=40 VARIATIONS=10 ./run_pipeline.sh all
 ```
 
-Environment variables configure via `.env`:
+Configure parameters in `.env`:
 
 ```ini
-HF_TOKEN=hf_your_token_here
+# Hugging Face Settings
+HF_TOKEN=your_token_here
 HF_DATASET_REPO=upwitu/carbench_sft_winner_dataset
+
+# Local Server Setup (No API Key Required)
+# OPENAI_API_BASE=http://localhost:8000/v1
+# OPENAI_API_KEY=EMPTY
+# CAR_BENCH_MODEL=upwitu/qwen3-4b-sft-all
+
+# External API Provider Setup
 OPENAI_API_BASE=https://api.deepseek.com/v1
 OPENAI_API_KEY=your_api_key_here
 CAR_BENCH_MODEL=deepseek-v4-flash
+
+# Generation Limits
 CONCURRENCY_LIMIT=30
 VARIATIONS_PER_TASK=10
 ```
@@ -358,14 +386,32 @@ Thay thế vòng lặp gọi công cụ tương tác bằng kịch bản Python 
 
 ### Hướng Dẫn Vận Hành Nhanh (1 Lệnh Duy Nhất)
 
-Cài đặt môi trường và chuẩn hóa dữ liệu chỉ với một câu lệnh:
+Đồng bộ môi trường và chuẩn hóa dữ liệu:
 
 ```bash
 chmod +x run_pipeline.sh
 ./run_pipeline.sh
 ```
 
-Chạy từng chế độ sinh dữ liệu riêng biệt:
+#### Lựa Chọn A: Chạy Bằng Mô Hình Nội Bộ Trên Server (Không Cần API Bên Ngoài)
+
+Dành cho kịch bản người dùng đã có sẵn checkpoint hoặc máy chủ mô hình nội bộ (vLLM, Ollama, Hugging Face checkpoint):
+
+1. Khởi chạy máy chủ suy luận vLLM trên GPU:
+```bash
+# Phục vụ trọng số fine-tune tại cổng 8000
+./run_pipeline.sh serve-vllm upwitu/qwen3-4b-sft-all 8000
+```
+
+2. Chạy sinh dữ liệu trực tiếp với endpoint nội bộ:
+```bash
+# Sinh tập dữ liệu qua endpoint nội bộ, bỏ qua giới hạn tốc độ RPM
+./run_pipeline.sh local upwitu/qwen3-4b-sft-all 8000
+```
+
+#### Lựa Chọn B: Chạy Bằng API Nhà Cung Cấp Cloud
+
+Chạy từng chế độ sinh dữ liệu riêng biệt thông qua cổng API tương thích OpenAI:
 
 ```bash
 # Sinh tập dữ liệu Multi-Role JSON
@@ -374,8 +420,30 @@ Chạy từng chế độ sinh dữ liệu riêng biệt:
 # Sinh tập dữ liệu CodeAct Python
 ./run_pipeline.sh codeact
 
-# Chạy toàn bộ với số luồng tùy chọn
+# Chạy toàn bộ luồng với cấu hình luồng tùy biến
 CONCURRENCY=40 VARIATIONS=10 ./run_pipeline.sh all
+```
+
+Cấu hình các tham số qua tệp `.env`:
+
+```ini
+# Cấu hình Hugging Face
+HF_TOKEN=your_token_here
+HF_DATASET_REPO=upwitu/carbench_sft_winner_dataset
+
+# Cấu hình Server Nội Bộ (Không yêu cầu API Key)
+# OPENAI_API_BASE=http://localhost:8000/v1
+# OPENAI_API_KEY=EMPTY
+# CAR_BENCH_MODEL=upwitu/qwen3-4b-sft-all
+
+# Cấu hình API Cloud
+OPENAI_API_BASE=https://api.deepseek.com/v1
+OPENAI_API_KEY=your_api_key_here
+CAR_BENCH_MODEL=deepseek-v4-flash
+
+# Giới hạn sinh dữ liệu
+CONCURRENCY_LIMIT=30
+VARIATIONS_PER_TASK=10
 ```
 
 ---

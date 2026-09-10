@@ -37,7 +37,11 @@ if [ ! -f ".env" ]; then
 HF_TOKEN=your_hf_token_here
 HF_DATASET_REPO=upwitu/carbench_sft_winner_dataset
 
-# LLM Backend Configuration
+# LLM Backend Configuration (Defaults to local server or external API)
+# For local vLLM / Ollama server:
+# OPENAI_API_BASE=http://localhost:8000/v1
+# OPENAI_API_KEY=EMPTY
+# CAR_BENCH_MODEL=upwitu/qwen3-4b-sft-all
 OPENAI_API_BASE=https://api.deepseek.com/v1
 OPENAI_API_KEY=your_openai_api_key_here
 CAR_BENCH_MODEL=deepseek-v4-flash
@@ -65,6 +69,31 @@ case "$MODE" in
     codeact)
         echo "Executing CodeAct Python synthesis..."
         uv run python -m sft_generator.main --dataset-type codeact_python --concurrency "$CONCURRENCY" --variations "$VARIATIONS"
+        ;;
+    local)
+        LOCAL_MODEL="${2:-upwitu/qwen3-4b-sft-all}"
+        LOCAL_PORT="${3:-8000}"
+        echo "Executing synthesis against local model server at port $LOCAL_PORT with model: $LOCAL_MODEL..."
+        uv run python -m sft_generator.main \
+            --dataset-type all \
+            --model "$LOCAL_MODEL" \
+            --api-base "http://localhost:${LOCAL_PORT}/v1" \
+            --api-key "EMPTY" \
+            --max-rpm 10000 \
+            --delay 0.0 \
+            --concurrency "$CONCURRENCY" \
+            --variations "$VARIATIONS"
+        ;;
+    serve-vllm)
+        SERVE_MODEL="${2:-upwitu/qwen3-4b-sft-all}"
+        SERVE_PORT="${3:-8000}"
+        echo "Launching local vLLM inference engine for model $SERVE_MODEL on port $SERVE_PORT..."
+        vllm serve "$SERVE_MODEL" \
+            --port "$SERVE_PORT" \
+            --dtype bfloat16 \
+            --max-model-len 8192 \
+            --gpu-memory-utilization 0.90 \
+            --tool-call-parser hermes
         ;;
     upload-hf)
         echo "Publishing dataset to Hugging Face..."
